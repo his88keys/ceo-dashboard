@@ -5,13 +5,16 @@ window.DASHBOARD_DATA = {
   period: { labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"] },
   headline: ["revenue", "grossProfit", "cash", "ltvCac"],
   metrics: [
+    // Headline vitals (featured in the top row; not repeated in a pillar section)
+    { id: "revenue", label: "Revenue", pillar: "Headline", type: "lagging", unit: "currency", target: 120000, direction: "up", values: [90000, 96000, 104000, 110000, 118000, 121000] },
+    { id: "grossProfit", label: "Gross Profit", pillar: "Headline", type: "lagging", unit: "currency", target: 72000, direction: "up", values: [52000, 55000, 60000, 63000, 68000, 70000] },
+    { id: "cash", label: "Cash Position", pillar: "Headline", type: "lagging", unit: "currency", target: 250000, direction: "up", values: [180000, 195000, 210000, 228000, 245000, 262000] },
+
     // Finance
-    { id: "revenue", label: "Revenue", pillar: "Finance", type: "lagging", unit: "currency", target: 120000, direction: "up", values: [90000, 96000, 104000, 110000, 118000, 121000] },
-    { id: "grossProfit", label: "Gross Profit", pillar: "Finance", type: "lagging", unit: "currency", target: 72000, direction: "up", values: [52000, 55000, 60000, 63000, 68000, 70000] },
     { id: "grossMargin", label: "Gross Margin", pillar: "Finance", type: "lagging", unit: "percent", target: 60, direction: "up", values: [57.8, 57.3, 57.7, 57.3, 57.6, 57.9] },
     { id: "netProfit", label: "Net Profit", pillar: "Finance", type: "lagging", unit: "currency", target: 24000, direction: "up", values: [12000, 14000, 17000, 18500, 21000, 22500] },
-    { id: "cash", label: "Cash Position", pillar: "Finance", type: "lagging", unit: "currency", target: 250000, direction: "up", values: [180000, 195000, 210000, 228000, 245000, 262000] },
-    { id: "runway", label: "Cash Runway", pillar: "Finance", type: "lagging", unit: "number", target: 12, direction: "up", values: [8, 8.5, 9, 10, 11, 12] },
+    { id: "runway", label: "Cash Runway", pillar: "Finance", type: "lagging", unit: "months", target: 12, direction: "up", values: [8, 8.5, 9, 10, 11, 12] },
+    { id: "arDays", label: "A/R Days", pillar: "Finance", type: "lagging", unit: "days", target: 30, direction: "down", values: [52, 48, 45, 41, 38, 35] },
 
     // Marketing
     { id: "leads", label: "Leads", pillar: "Marketing", type: "leading", unit: "number", target: 800, direction: "up", values: [520, 560, 610, 690, 740, 810] },

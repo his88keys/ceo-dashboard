@@ -4,12 +4,16 @@ window.DASHBOARD_DATA = {
   period: { labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"] },
   headline: ["revenue", "grossProfit", "cash", "ltvCac"],
   metrics: [
-    { id: "revenue", label: "MRR", pillar: "Finance", type: "lagging", unit: "currency", target: 50000, direction: "up", values: [22000, 27000, 33000, 39000, 45000, 51000] },
-    { id: "grossProfit", label: "Gross Profit", pillar: "Finance", type: "lagging", unit: "currency", target: 40000, direction: "up", values: [17000, 21000, 26000, 31000, 36000, 41000] },
+    // Headline vitals (featured in the top row; not repeated in a pillar section)
+    { id: "revenue", label: "MRR", pillar: "Headline", type: "lagging", unit: "currency", target: 50000, direction: "up", values: [22000, 27000, 33000, 39000, 45000, 51000] },
+    { id: "grossProfit", label: "Gross Profit", pillar: "Headline", type: "lagging", unit: "currency", target: 40000, direction: "up", values: [17000, 21000, 26000, 31000, 36000, 41000] },
+    { id: "cash", label: "Cash Position", pillar: "Headline", type: "lagging", unit: "currency", target: 300000, direction: "up", values: [420000, 400000, 385000, 372000, 365000, 360000] },
+
+    // Finance
     { id: "grossMargin", label: "Gross Margin", pillar: "Finance", type: "lagging", unit: "percent", target: 80, direction: "up", values: [77, 78, 79, 79.5, 80, 80.4] },
     { id: "netProfit", label: "Net Profit", pillar: "Finance", type: "lagging", unit: "currency", target: 5000, direction: "up", values: [-8000, -4000, -1000, 1500, 3500, 6000] },
-    { id: "cash", label: "Cash Position", pillar: "Finance", type: "lagging", unit: "currency", target: 300000, direction: "up", values: [420000, 400000, 385000, 372000, 365000, 360000] },
-    { id: "runway", label: "Cash Runway", pillar: "Finance", type: "lagging", unit: "number", target: 18, direction: "up", values: [24, 22, 21, 20, 19, 18] },
+    { id: "runway", label: "Cash Runway", pillar: "Finance", type: "lagging", unit: "months", target: 18, direction: "up", values: [24, 22, 21, 20, 19, 18] },
+    { id: "burnMultiple", label: "Burn Multiple", pillar: "Finance", type: "lagging", unit: "ratio", target: 1.5, direction: "down", values: [3.2, 2.8, 2.4, 2.0, 1.7, 1.4] },
 
     { id: "leads", label: "Signups", pillar: "Marketing", type: "leading", unit: "number", target: 1200, direction: "up", values: [700, 820, 940, 1050, 1150, 1240] },
     { id: "cpl", label: "CAC", pillar: "Marketing", type: "lagging", unit: "currency", target: 120, direction: "down", values: [180, 168, 155, 142, 130, 122] },

@@ -80,6 +80,28 @@ side, red = further off. **Trend:** compares the latest value to the prior one.
 See `examples/` for alternate datasets (e.g. an early SaaS startup). To use one,
 copy its contents into `data.js`.
 
+## AI insights (optional)
+
+The dashboard can show plain-language AI commentary: an executive summary at the
+top and a one-line story under each pillar row. These are **pre-generated** and
+baked into a static `insights.js` — no API key is ever needed in the browser, and
+the dashboard still works with `insights.js` absent.
+
+Generate or refresh them (needs [Node](https://nodejs.org) + an OpenAI key):
+
+```bash
+export OPENAI_API_KEY=sk-...        # or put it in a .env file next to data.js
+node tools/generate-insights.mjs    # reads data.js, writes insights.js
+```
+
+- Model: set `INSIGHTS_MODEL` (default `gpt-4o`).
+- Preview without writing: `node tools/generate-insights.mjs --dry-run`.
+- **Rerun after editing `data.js`.** If the numbers change, the dashboard shows a
+  small "insights may be outdated — regenerate" note until you do.
+
+Don't want AI text? Delete `insights.js` (or never generate it) and the dashboard
+renders cleanly without it.
+
 ## Theme
 
 Toggle light/dark with the button in the top-right. Your choice is remembered.

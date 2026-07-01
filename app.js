@@ -16,6 +16,8 @@ function formatValue(value, unit, opts) {
       return n.toFixed(1) + "%";
     case "days":
       return Math.round(n).toLocaleString("en-US") + "d";
+    case "months":
+      return (Math.round(n * 10) / 10) + " mo";
     case "ratio":
       return n.toFixed(1) + ":1";
     case "number":
@@ -50,6 +52,16 @@ function trendFor(values) {
   return { dir: dir, pct: dir === "flat" ? 0 : rounded };
 }
 
+// Is a trend movement GOOD for this metric, given its direction?
+// Returns "good" | "bad" | "flat". Lower-is-better metrics (direction "down")
+// invert: a downward trend is good, an upward trend is bad.
+function trendPolarity(trendDir, direction) {
+  if (trendDir === "flat") return "flat";
+  var wantsDown = direction === "down";
+  var isDown = trendDir === "down";
+  return (isDown === wantsDown) ? "good" : "bad";
+}
+
 function sparklinePath(values, width, height) {
   if (!Array.isArray(values) || values.length < 2) return "";
   var nums = values.map(Number);
@@ -69,9 +81,45 @@ function sparklinePath(values, width, height) {
   return parts.join(" ");
 }
 
+// Deterministic, order-independent hash of the data's numbers. Used to detect
+// whether baked AI insights are stale (data changed since they were generated).
+// FNV-1a 32-bit -> 8-char hex. No deps, stable across Node and browsers.
+function dataSignature(data) {
+  var metrics = (data && data.metrics) || [];
+  var parts = metrics.map(function (m) {
+    return [m.id, m.direction, m.target, (m.values || []).join(",")].join("|");
+  }).sort();
+  var basis = ((data && data.company) || "") + "::" + parts.join(";");
+  var h = 0x811c9dc5;
+  for (var i = 0; i < basis.length; i++) {
+    h ^= basis.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return ("0000000" + h.toString(16)).slice(-8);
+}
+
+// Count how many metrics are off-track (red) vs at-risk (amber) right now.
+function summarize(metrics) {
+  var red = 0, amber = 0;
+  (metrics || []).forEach(function (m) {
+    var v = (m.values && m.values.length) ? m.values[m.values.length - 1] : null;
+    var s = statusFor(v, m.target, m.direction);
+    if (s === "red") red++;
+    else if (s === "amber") amber++;
+  });
+  return { red: red, amber: amber };
+}
+
 // ---- Rendering (browser only) ----
 
 var PILLAR_ORDER = ["Marketing", "Sales", "Operations", "Finance"];
+
+// Escape untrusted text (AI-generated insight strings) before inserting as HTML.
+function escapeHTML(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 function metricById(data, id) {
   for (var i = 0; i < data.metrics.length; i++) {
@@ -92,6 +140,7 @@ function cardHTML(metric) {
   var latest = latestOf(metric);
   var status = statusFor(latest, metric.target, metric.direction);
   var trend = trendFor(metric.values || []);
+  var polarity = trendPolarity(trend.dir, metric.direction); // good | bad | flat
   var hasData = latest !== null && latest !== undefined;
   var spark = sparklinePath(metric.values || [], 120, 32);
   var valueStr = hasData ? formatValue(latest, metric.unit) : "no data";
@@ -105,9 +154,8 @@ function cardHTML(metric) {
       '</div>' +
       '<div class="card-value">' + valueStr + '</div>' +
       '<div class="card-meta">' +
-        '<span class="dot"></span>' +
         '<span class="target">Target ' + targetStr + '</span>' +
-        '<span class="trend trend-' + trend.dir + '">' + TREND_GLYPH[trend.dir] + ' ' + trendPctStr + '</span>' +
+        '<span class="trend trend-' + polarity + '" title="' + trendPctStr + ' vs last period">' + TREND_GLYPH[trend.dir] + ' ' + trendPctStr + '</span>' +
       '</div>' +
       (spark ? '<svg class="spark" viewBox="0 0 120 32" preserveAspectRatio="none"><path d="' + spark + '"/></svg>' : '') +
     '</div>'
@@ -123,18 +171,37 @@ function renderHeadline(data) {
   return '<section class="headline"><div class="grid grid-headline">' + cards + '</div></section>';
 }
 
-function renderPillars(data) {
+function renderPillars(data, insights) {
+  var pillarText = (insights && insights.pillars) || {};
   return PILLAR_ORDER.map(function (pillar) {
     var metrics = data.metrics.filter(function (m) { return m.pillar === pillar; });
     if (metrics.length === 0) return "";
     var cards = metrics.map(cardHTML).join("");
+    var note = pillarText[pillar]
+      ? '<p class="pillar-insight">' + escapeHTML(pillarText[pillar]) + '</p>'
+      : "";
     return (
       '<section class="pillar">' +
         '<h2 class="pillar-title">' + pillar + '</h2>' +
         '<div class="grid">' + cards + '</div>' +
+        note +
       '</section>'
     );
   }).join("");
+}
+
+function renderSummary(data, insights) {
+  if (!insights || !insights.summary) return "";
+  var stale = insights.signature && insights.signature !== dataSignature(data);
+  var staleNote = stale
+    ? '<span class="summary-stale">Numbers changed since these insights — regenerate (node tools/generate-insights.mjs).</span>'
+    : "";
+  return (
+    '<section class="summary-card">' +
+      '<div class="summary-eyebrow">AI summary' + staleNote + '</div>' +
+      '<p class="summary-body">' + escapeHTML(insights.summary) + '</p>' +
+    '</section>'
+  );
 }
 
 function initToggle() {
@@ -165,7 +232,19 @@ function init() {
     var labels = data.period.labels;
     periodEl.textContent = labels[0] + " – " + labels[labels.length - 1];
   }
-  root.innerHTML = renderHeadline(data) + renderPillars(data);
+  var chip = document.getElementById("status-summary");
+  if (chip) {
+    var s = summarize(data.metrics);
+    if (s.red || s.amber) {
+      chip.textContent = s.red + " off-track · " + s.amber + " at risk";
+      chip.className = "status-chip " + (s.red ? "chip-red" : "chip-amber");
+    } else {
+      chip.textContent = "All on track";
+      chip.className = "status-chip chip-green";
+    }
+  }
+  var insights = window.DASHBOARD_INSIGHTS;
+  root.innerHTML = renderSummary(data, insights) + renderHeadline(data) + renderPillars(data, insights);
   initToggle();
 }
 
@@ -179,6 +258,9 @@ if (typeof module !== "undefined" && module.exports) {
     formatValue: formatValue,
     statusFor: statusFor,
     trendFor: trendFor,
+    trendPolarity: trendPolarity,
+    summarize: summarize,
+    dataSignature: dataSignature,
     sparklinePath: sparklinePath
   };
 }
