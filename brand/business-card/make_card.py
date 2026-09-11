@@ -58,10 +58,10 @@ QR_URL = "https://neonskyai.com/your-app.html"
 
 # ------------------------------------------------------------------ colour --
 # DeviceCMYK throughout -- no RGB, no spot colours, no transparency.
-# Total area coverage peaks at 264%, inside the 300% most sheet-fed shops want.
-NAVY_DEEP = CMYKColor(0.96, 0.84, 0.44, 0.40)   # ~ #0C2340
-NAVY_MID = CMYKColor(0.95, 0.79, 0.34, 0.22)    # ~ #102E52
-NAVY_LIFT = CMYKColor(0.93, 0.73, 0.26, 0.10)   # ~ #14406E
+# Total area coverage peaks at 277%, inside the 300% most sheet-fed shops want.
+NAVY_DEEP = CMYKColor(0.95, 0.78, 0.38, 0.66)   # ~ #041336
+NAVY_MID = CMYKColor(0.96, 0.80, 0.36, 0.54)    # ~ #05174B
+NAVY_LIFT = CMYKColor(0.95, 0.78, 0.32, 0.42)   # ~ #072164
 BLUE = CMYKColor(0.70, 0.28, 0.00, 0.00)        # ~ #3D9BE4  brand accent
 BLUE_LT = CMYKColor(0.44, 0.13, 0.00, 0.00)     # ~ #8AC2F0
 WHITE = CMYKColor(0, 0, 0, 0)
@@ -139,6 +139,88 @@ def background(c):
     c.restoreState()
 
 
+# -------------------------------------------------------------- svg paths --
+PATH_TOKEN = re.compile(r"[MmLlHhVvCcSsQqTtZz]|-?\d*\.?\d+(?:[eE][-+]?\d+)?")
+
+
+def svg_path(c, d, x, y, size, viewbox):
+    """Turn an SVG path's `d` attribute into a ReportLab path, scaled so the
+    viewBox spans `size` and anchored with its top-left corner at (x, y).
+
+    SVG counts Y downwards and PDF counts it upwards, so the Y axis is
+    flipped. Arcs ("A"/"a") are not handled -- no icon here uses one, and a
+    silent wrong curve on a printed card is worse than a loud failure.
+    """
+    k = size / float(viewbox)
+    X = lambda u: x + u * k
+    Y = lambda v: y + size - v * k
+
+    tokens = PATH_TOKEN.findall(d)
+    path = c.beginPath()
+    i, cmd = 0, None
+    cur = start = (0.0, 0.0)
+    prev_ctrl = None
+
+    def num():
+        nonlocal i
+        i += 1
+        return float(tokens[i - 1])
+
+    while i < len(tokens):
+        if tokens[i].isalpha():
+            cmd = tokens[i]
+            i += 1
+            if cmd in "Zz":
+                path.close()
+                cur = start
+                continue
+        rel = cmd.islower()
+        ox, oy = cur if rel else (0.0, 0.0)
+
+        if cmd in "Mm":
+            cur = (ox + num(), oy + num())
+            path.moveTo(X(cur[0]), Y(cur[1]))
+            start = cur
+            cmd = "l" if rel else "L"          # extra pairs are implicit lineto
+            prev_ctrl = None
+        elif cmd in "Ll":
+            cur = (ox + num(), oy + num())
+            path.lineTo(X(cur[0]), Y(cur[1]))
+            prev_ctrl = None
+        elif cmd in "Hh":
+            cur = (ox + num(), cur[1])
+            path.lineTo(X(cur[0]), Y(cur[1]))
+            prev_ctrl = None
+        elif cmd in "Vv":
+            cur = (cur[0], oy + num())
+            path.lineTo(X(cur[0]), Y(cur[1]))
+            prev_ctrl = None
+        elif cmd in "CcSs":
+            if cmd in "Cc":
+                c1 = (ox + num(), oy + num())
+            else:                               # smooth: mirror the last control
+                c1 = (2 * cur[0] - prev_ctrl[0], 2 * cur[1] - prev_ctrl[1]) \
+                     if prev_ctrl else cur
+            c2 = (ox + num(), oy + num())
+            end = (ox + num(), oy + num())
+            path.curveTo(X(c1[0]), Y(c1[1]), X(c2[0]), Y(c2[1]), X(end[0]), Y(end[1]))
+            cur, prev_ctrl = end, c2
+        elif cmd in "QqTt":
+            if cmd in "Qq":
+                q = (ox + num(), oy + num())
+            else:
+                q = (2 * cur[0] - prev_ctrl[0], 2 * cur[1] - prev_ctrl[1]) \
+                    if prev_ctrl else cur
+            end = (ox + num(), oy + num())
+            c1 = (cur[0] + 2.0 / 3 * (q[0] - cur[0]), cur[1] + 2.0 / 3 * (q[1] - cur[1]))
+            c2 = (end[0] + 2.0 / 3 * (q[0] - end[0]), end[1] + 2.0 / 3 * (q[1] - end[1]))
+            path.curveTo(X(c1[0]), Y(c1[1]), X(c2[0]), Y(c2[1]), X(end[0]), Y(end[1]))
+            cur, prev_ctrl = end, q
+        else:
+            raise ValueError(f"unsupported SVG path command: {cmd!r}")
+    return path
+
+
 # ------------------------------------------------------------- cloud mark --
 def _circle_pt(cx, cy, r, ang):
     return cx + r * math.cos(ang), cy + r * math.sin(ang)
@@ -195,6 +277,13 @@ def cloud_path(c, x, y, w, circles, baseline):
 
 FRONT_CLOUD = [(0.22, 0.28, 0.20), (0.48, 0.38, 0.27), (0.76, 0.26, 0.19)]
 
+# Material Symbols "call" (Apache 2.0) -- the tilted handset everyone reads as
+# a phone. 24 x 24 viewBox.
+PHONE_D = ("M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 "
+           "1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 "
+           "1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 "
+           "2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z")
+
 
 def logo_mark(c, x, y, w):
     """Two interlocking cloud outlines -- the smaller one trailing up and left,
@@ -226,19 +315,9 @@ def chip(c, cx, cy, r, kind):
     s = r  # glyph half-size
 
     if kind == "phone":
-        # The familiar handset corner. Kept well inside the disc -- at 8 pt a
-        # heavier, wider version stops reading as a phone and reads as an "L".
-        e = s * 0.46
-        c.setLineWidth(s * 0.30)
-        c.setLineCap(1)
-        c.setLineJoin(1)
-        p = c.beginPath()
-        p.moveTo(cx - e * 0.74, cy + e)
-        p.lineTo(cx - e * 0.74, cy + s * 0.02)
-        p.curveTo(cx - e * 0.74, cy - e * 0.44, cx - e * 0.44, cy - e * 0.74,
-                  cx + s * 0.02, cy - e * 0.74)
-        p.lineTo(cx + e, cy - e * 0.74)
-        c.drawPath(p, stroke=1, fill=0)
+        g = s * 1.50
+        c.drawPath(svg_path(c, PHONE_D, cx - g / 2, cy - g / 2, g, 24.0),
+                   stroke=0, fill=1)
 
     elif kind == "mail":
         w, h = s * 1.20, s * 0.86

@@ -26,7 +26,7 @@ they specifically ask for marks — it is the same artwork on a larger sheet.
 - **Safe area** 3.25 × 1.75 in — all live copy sits inside it, verified on every build
 - **Boxes** MediaBox and BleedBox = the full bleed; TrimBox and ArtBox = the cut line, so imposition is automatic
 - **Colour** DeviceCMYK only. No RGB, no spot colours, no ICC profile attached — the shop applies its own press profile
-- **Ink** peaks at 264% total area coverage, inside the usual 300% limit
+- **Ink** peaks at 277% total area coverage, inside the usual 300% limit
 - **Transparency** none. Every knockout sits on flat colour, so nothing needs flattening
 - **Fonts** Inter, subset and embedded. No non-embedded font references
 - **Vector** fully. Zero raster images, including the QR code — it stays crisp at any size
@@ -35,9 +35,9 @@ they specifically ask for marks — it is the same artwork on a larger sheet.
 
 | Role | CMYK | Approx. |
 | --- | --- | --- |
-| Navy, deep | 96 / 84 / 44 / 40 | `#0C2340` |
-| Navy, mid | 95 / 79 / 34 / 22 | `#102E52` |
-| Navy, lift | 93 / 73 / 26 / 10 | `#14406E` |
+| Navy, deep | 95 / 78 / 38 / 66 | `#041336` |
+| Navy, mid | 96 / 80 / 36 / 54 | `#05174B` |
+| Navy, lift | 95 / 78 / 32 / 42 | `#072164` |
 | Accent blue | 70 / 28 / 0 / 0 | `#3D9BE4` |
 | Accent blue, light | 44 / 13 / 0 / 0 | `#8AC2F0` |
 | Secondary copy | 22 / 10 / 3 / 0 | `#C4D6E9` |
@@ -63,5 +63,14 @@ python3 make_card.py --proof    # also writes the 300 dpi PNG proofs
 
 The build fails loudly if any text run lands outside the safe area, so a longer
 job title or a new phone number cannot quietly push copy into the trim.
+
+## Icons
+
+The contact icons are drawn as vector paths, not placed as images. The phone
+is Material Symbols "call" (Apache 2.0) — the standard handset — parsed from
+its SVG path at build time by `svg_path()` in `make_card.py`. That parser
+handles any SVG path made of move/line/cubic/quadratic commands, so a supplied
+logo SVG can be dropped in the same way: paste its `d` attribute and viewBox
+size. Arcs (`A`/`a`) are rejected rather than approximated.
 
 Inter is used under the SIL Open Font License 1.1 — see `fonts/OFL.txt`.
