@@ -13,7 +13,6 @@ Everything below is measured in PostScript points (72 pt = 1 in).
 """
 
 import argparse
-import math
 import os
 import sys
 
@@ -26,6 +25,7 @@ from reportlab.lib.colors import CMYKColor
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
+from reportlab.pdfgen.canvas import FILL_EVEN_ODD
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(HERE, "fonts")
@@ -62,8 +62,7 @@ QR_URL = "https://neonskyai.com/your-app.html"
 NAVY_DEEP = CMYKColor(0.95, 0.78, 0.38, 0.66)   # ~ #041336
 NAVY_MID = CMYKColor(0.96, 0.80, 0.36, 0.54)    # ~ #05174B
 NAVY_LIFT = CMYKColor(0.95, 0.78, 0.32, 0.42)   # ~ #072164
-BLUE = CMYKColor(0.70, 0.28, 0.00, 0.00)        # ~ #3D9BE4  brand accent
-BLUE_LT = CMYKColor(0.44, 0.13, 0.00, 0.00)     # ~ #8AC2F0
+BLUE = CMYKColor(0.74, 0.22, 0.00, 0.00)        # brand #29ABE2, press build
 WHITE = CMYKColor(0, 0, 0, 0)
 MIST = CMYKColor(0.22, 0.10, 0.03, 0.00)        # ~ #C4D6E9  secondary copy
 RULE = CMYKColor(0.55, 0.30, 0.10, 0.05)        # hairline dividers
@@ -76,6 +75,20 @@ FONTS = {
     "bold": ("Inter-Bold", "Inter-Bold.ttf"),
     "black": ("Inter-ExtraBold", "Inter-ExtraBold.ttf"),
 }
+
+
+def load_svg(path):
+    """Read a single-path SVG asset and hand back (d, (viewbox_w, viewbox_h))."""
+    with open(path) as fh:
+        markup = fh.read()
+    d = re.search(r'\sd="([^"]+)"', markup)
+    vb = re.search(r'viewBox="([\d.\-\s]+)"', markup)
+    if not d or not vb:
+        sys.exit(f"{path}: expected an SVG with a viewBox and one path")
+    x0, y0, w, h = (float(v) for v in vb.group(1).split())
+    if x0 or y0:
+        sys.exit(f"{path}: viewBox must start at 0 0 -- re-run tools/trace_logo.py")
+    return d.group(1), (w, h)
 
 
 def register_fonts():
@@ -145,15 +158,17 @@ PATH_TOKEN = re.compile(r"[MmLlHhVvCcSsQqTtZz]|-?\d*\.?\d+(?:[eE][-+]?\d+)?")
 
 def svg_path(c, d, x, y, size, viewbox):
     """Turn an SVG path's `d` attribute into a ReportLab path, scaled so the
-    viewBox spans `size` and anchored with its top-left corner at (x, y).
+    viewBox width spans `size` and anchored with its bottom-left corner at
+    (x, y). `viewbox` is a single number for a square box, or (width, height).
 
     SVG counts Y downwards and PDF counts it upwards, so the Y axis is
     flipped. Arcs ("A"/"a") are not handled -- no icon here uses one, and a
     silent wrong curve on a printed card is worse than a loud failure.
     """
-    k = size / float(viewbox)
+    vw, vh = viewbox if isinstance(viewbox, (tuple, list)) else (viewbox, viewbox)
+    k = size / float(vw)
     X = lambda u: x + u * k
-    Y = lambda v: y + size - v * k
+    Y = lambda v: y + vh * k - v * k
 
     tokens = PATH_TOKEN.findall(d)
     path = c.beginPath()
@@ -221,61 +236,11 @@ def svg_path(c, d, x, y, size, viewbox):
     return path
 
 
-# ------------------------------------------------------------- cloud mark --
-def _circle_pt(cx, cy, r, ang):
-    return cx + r * math.cos(ang), cy + r * math.sin(ang)
-
-
-def _intersect_upper(c1, c2):
-    """Upper intersection point of two circles, as (x, y)."""
-    (x1, y1, r1), (x2, y2, r2) = c1, c2
-    dx, dy = x2 - x1, y2 - y1
-    d = math.hypot(dx, dy)
-    a = (d * d + r1 * r1 - r2 * r2) / (2 * d)
-    h = math.sqrt(max(0.0, r1 * r1 - a * a))
-    mx, my = x1 + a * dx / d, y1 + a * dy / d
-    p = (mx + h * dy / d, my - h * dx / d)
-    q = (mx - h * dy / d, my + h * dx / d)
-    return p if p[1] > q[1] else q
-
-
-def cloud_path(c, x, y, w, circles, baseline):
-    """Trace the union outline of three disks sitting on a flat base, as a
-    polyline fine enough that the facets vanish at any print resolution."""
-    cl = [(x + cx * w, y + cy * w, r * w) for cx, cy, r in circles]
-    by = y + baseline * w
-    left, mid, right = cl
-
-    def foot(circ, direction):
-        cx, cy, r = circ
-        dx = math.sqrt(max(0.0, r * r - (by - cy) ** 2))
-        return (cx + direction * dx, by)
-
-    p0 = foot(left, -1)
-    p1 = foot(right, +1)
-    i_lm = _intersect_upper(left, mid)
-    i_mr = _intersect_upper(mid, right)
-
-    def ang(circ, pt):
-        return math.atan2(pt[1] - circ[1], pt[0] - circ[0])
-
-    arcs = [(right, ang(right, p1), ang(right, i_mr)),
-            (mid, ang(mid, i_mr), ang(mid, i_lm)),
-            (left, ang(left, i_lm), ang(left, p0))]
-
-    path = c.beginPath()
-    path.moveTo(*p0)
-    path.lineTo(*p1)
-    for (cx, cy, r), a0, a1 in arcs:
-        sweep = (a1 - a0) % (2 * math.pi)          # always counter-clockwise
-        steps = max(8, int(math.degrees(sweep) / 2))
-        for i in range(1, steps + 1):
-            path.lineTo(*_circle_pt(cx, cy, r, a0 + sweep * i / steps))
-    path.close()
-    return path
-
-
-FRONT_CLOUD = [(0.22, 0.28, 0.20), (0.48, 0.38, 0.27), (0.76, 0.26, 0.19)]
+# -------------------------------------------------------------- brand mark --
+# The real NeonSky mark, traced to outlines from the supplied PNG by
+# tools/trace_logo.py. Vector, so it stays sharp at any size and keeps the
+# card free of raster images.
+LOGO_D, LOGO_VB = load_svg(os.path.join(HERE, "logo.svg"))
 
 # Material Symbols "call" (Apache 2.0) -- the tilted handset everyone reads as
 # a phone. 24 x 24 viewBox.
@@ -284,24 +249,15 @@ PHONE_D = ("M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 "
            "1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 "
            "2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z")
 
+LOGO_H = LOGO_VB[1] / LOGO_VB[0]        # mark height as a fraction of its width
+
 
 def logo_mark(c, x, y, w):
-    """Two interlocking cloud outlines -- the smaller one trailing up and left,
-    the way it reads on the proof."""
-    c.saveState()
-    c.setLineJoin(1)
-    c.setLineCap(1)
-
-    back = cloud_path(c, x - 0.04 * w, y + 0.33 * w, w * 0.55, FRONT_CLOUD, 0.10)
-    c.setStrokeColor(BLUE_LT)
-    c.setLineWidth(w * 0.050)
-    c.drawPath(back, stroke=1, fill=0)
-
-    front = cloud_path(c, x + 0.14 * w, y, w * 0.86, FRONT_CLOUD, 0.10)
-    c.setStrokeColor(BLUE)
-    c.setLineWidth(w * 0.062)
-    c.drawPath(front, stroke=1, fill=0)
-    c.restoreState()
+    """Draw the mark `w` wide with its bottom-left at (x, y). Even-odd fill --
+    the mark is an outline shape, so its counters have to stay open."""
+    c.setFillColor(BLUE)
+    c.drawPath(svg_path(c, LOGO_D, x, y, w, LOGO_VB),
+               stroke=0, fill=1, fillMode=FILL_EVEN_ODD)
 
 
 # ------------------------------------------------------------ icon chips ---
@@ -392,10 +348,13 @@ def draw_front(c):
     col_r = divider_x - 9.0          # left column runs to here
 
     # --- logo lockup -------------------------------------------------------
-    logo_mark(c, L, 127.0, 23.0)
-    draw_text(c, L + 26.0, 128.5, "NeonSky", F["bold"], 15.0, WHITE)
+    mark_w = 21.0
+    cap = pdfmetrics.getAscentDescent(F["bold"], 15.0)[0] * 0.72   # cap height
+    logo_mark(c, L, 128.5 + (cap - mark_w * LOGO_H) / 2.0, mark_w)
+    wm_x = L + mark_w + 6.0
+    draw_text(c, wm_x, 128.5, "NeonSky", F["bold"], 15.0, WHITE)
     w = width_of("NeonSky ", F["bold"], 15.0)
-    draw_text(c, L + 26.0 + w, 128.5, "AI", F["bold"], 15.0, BLUE)
+    draw_text(c, wm_x + w, 128.5, "AI", F["bold"], 15.0, BLUE)
 
     size = fit(TAGLINE, F["medium"], 5.3, col_r - L, tracking=0.92)
     draw_text(c, L, 119.5, TAGLINE, F["medium"], size, MIST, tracking=0.92)
